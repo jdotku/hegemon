@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hegemon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Ambient background orbs -->
+    <div class="bg-orb orb-blue"></div>
+    <div class="bg-orb orb-pink"></div>
+    <div class="bg-orb orb-green"></div>
+
+<div id="app">
+
+    <!-- ======================================================
+         GAME ROOT
+    ====================================================== -->
+    <div id="screen-game">
+
+        <header class="masthead">
+            <h1 class="game-title">HEGEMON</h1>
+            <div class="reputation-wrap">
+                <span class="rep-label-text">REP</span>
+                <div class="reputation-track">
+                    <div class="reputation-fill" id="reputation-bar-fill" style="width:50%"></div>
+                </div>
+                <span class="rep-value" id="reputation-label">50</span>
+            </div>
+            <div class="masthead-right">
+                <div id="event-ticker" class="event-pill hidden">
+                    <span class="ep-icon">⚡</span>
+                    <span id="event-ticker-text" class="ep-text">—</span>
+                </div>
+                <div class="round-pips">
+                    <span class="pip" id="pip-1"></span>
+                    <span class="pip" id="pip-2"></span>
+                    <span class="pip" id="pip-3"></span>
+                    <span class="pip" id="pip-4"></span>
+                    <span class="pip" id="pip-5"></span>
+                </div>
+                <div class="round-info">
+                    <span class="round-label">RND</span>
+                    <span id="round-number" class="round-number">1</span>
+                    <span class="round-sep">/5</span>
+                </div>
+                <div class="phase-indicator" id="phase-indicator">AWAITING</div>
+            </div>
+        </header>
+
+        <!-- Last action summary -->
+        <div class="last-action-bar" id="last-action-bar">Select an action card, then click a nation to act.</div>
+
+        <div class="game-grid">
+
+            <!-- LEFT COLUMN -->
+            <aside class="col-left">
+
+                <div class="player-mini-card glass-panel">
+                    <span class="player-flag" id="player-flag">—</span>
+                    <div class="player-country-name" id="player-country-name">—</div>
+                    <div class="player-country-region hidden" id="player-country-region">—</div>
+                </div>
+
+                <div class="stats-section glass-panel">
+                    <div class="stat-row">
+                        <span class="stat-label">GDP</span>
+                        <div class="stat-track"><div class="stat-fill" id="bar-gdp" style="width:50%"></div></div>
+                        <span class="stat-num" id="stat-gdp">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">MIL</span>
+                        <div class="stat-track"><div class="stat-fill" id="bar-military" style="width:50%"></div></div>
+                        <span class="stat-num" id="stat-military">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">APR</span>
+                        <div class="stat-track"><div class="stat-fill" id="bar-approval" style="width:50%"></div></div>
+                        <span class="stat-num" id="stat-approval">—</span>
+                    </div>
+                </div>
+
+                <div id="objective-card" class="objective-card glass-panel hidden">
+                    <div class="objective-header">
+                        <span class="obj-label">OBJECTIVE</span>
+                        <span class="objective-status-icon" id="objective-status-icon">🔒</span>
+                    </div>
+                    <div class="objective-name" id="objective-name">—</div>
+                    <div class="objective-desc hidden" id="objective-desc">—</div>
+                    <div class="objective-bonus">
+                        <span class="objective-bonus-label">BONUS</span>
+                        <span class="objective-bonus-val" id="objective-bonus">—</span>
+                    </div>
+                </div>
+
+                <!-- Hidden but required by game.js -->
+                <div id="intel-section" class="hidden">
+                    <div class="intel-section-header">
+                        <div id="intel-tokens-row">
+                            <span class="intel-token" id="intel-token-0"></span>
+                            <span class="intel-token" id="intel-token-1"></span>
+                            <span class="intel-token" id="intel-token-2"></span>
+                        </div>
+                    </div>
+                    <div class="intel-hint">Spend a token to preview an AI nation's next move</div>
+                    <button id="btn-run-intel" class="btn-intel" disabled>RUN INTEL</button>
+                </div>
+
+                <div class="log-section hidden">
+                    <div class="event-log" id="event-log"></div>
+                </div>
+
+            </aside>
+
+            <!-- CENTER COLUMN -->
+            <main class="col-center">
+
+                <!-- Round timer bar -->
+                <div class="round-timer-track" id="round-timer-track">
+                    <div class="round-timer-bar" id="round-timer-bar" style="width:100%"></div>
+                </div>
+
+                <!-- Response / dispatch area -->
+                <div class="response-wrapper glass-panel">
+                    <div id="response-idle" class="response-idle">
+                        <div class="idle-icon">⚖</div>
+                        <div class="idle-text">Select an action, then click a nation.</div>
+                    </div>
+
+                    <div id="dispatch-overlay" class="dispatch-overlay">
+                        <div id="dispatch-panel" class="dispatch-panel">
+
+                            <div class="dispatch-nation-header">
+                                <span class="dispatch-flag" id="dispatch-flag">—</span>
+                                <div class="dispatch-nation-info">
+                                    <div class="dispatch-nation-name" id="dispatch-nation-name">—</div>
+                                    <div class="dispatch-nation-region" id="dispatch-nation-region">—</div>
+                                    <div class="dispatch-action-label" id="dispatch-action-label">—</div>
+                                </div>
+                                <div class="dispatch-personality-tag" id="dispatch-personality-tag">—</div>
+                            </div>
+
+                            <div id="dispatch-loading" class="dispatch-loading">
+                                <div class="trans-dots">
+                                    <span class="tdot"></span>
+                                    <span class="tdot"></span>
+                                    <span class="tdot"></span>
+                                    <span class="tdot"></span>
+                                    <span class="tdot"></span>
+                                </div>
+                                <div class="dispatch-loading-text">AWAITING RESPONSE</div>
+                            </div>
+
+                            <div id="dispatch-response-section" class="dispatch-response-section hidden">
+                                <div class="dispatch-section-label">FOREIGN MINISTER COMMUNIQUÉ</div>
+                                <div class="dispatch-response-text">
+                                    <span id="dispatch-text"></span><span class="tele-cursor" id="tele-cursor" aria-hidden="true">▋</span>
+                                </div>
+                            </div>
+
+                            <div id="dispatch-effects-section" class="dispatch-effects-section hidden">
+                                <div class="dispatch-effect">
+                                    <span class="deff-key">RELATIONS</span>
+                                    <span class="deff-val" id="dispatch-rel">—</span>
+                                </div>
+                                <div class="dispatch-effect">
+                                    <span class="deff-key">GDP</span>
+                                    <span class="deff-val" id="dispatch-gdp">—</span>
+                                </div>
+                                <div class="dispatch-effect">
+                                    <span class="deff-key">MILITARY</span>
+                                    <span class="deff-val" id="dispatch-mil">—</span>
+                                </div>
+                                <div class="dispatch-effect">
+                                    <span class="deff-key">APPROVAL</span>
+                                    <span class="deff-val" id="dispatch-apr">—</span>
+                                </div>
+                            </div>
+
+                            <div class="dispatch-footer">
+                                <button id="dispatch-acknowledge" class="btn-primary" disabled>ACKNOWLEDGE</button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action cards -->
+                <div class="actions-section">
+                    <div class="actions-row" id="actions-grid">
+                        <div class="action-card action-trade" id="action-trade" data-action="trade">
+                            <div class="card-icon">💹</div>
+                            <div class="card-name">TRADE DEAL</div>
+                            <div class="card-desc">Boost GDP and bilateral ties.</div>
+                        </div>
+                        <div class="action-card action-sanctions" id="action-sanctions" data-action="sanctions">
+                            <div class="card-icon">🚫</div>
+                            <div class="card-name">SANCTIONS</div>
+                            <div class="card-desc">Apply economic pressure.</div>
+                        </div>
+                        <div class="action-card action-alliance" id="action-alliance" data-action="alliance">
+                            <div class="card-icon">🤝</div>
+                            <div class="card-name">ALLIANCE</div>
+                            <div class="card-desc">Forge a formal partnership.</div>
+                        </div>
+                        <div class="action-card action-summit hidden" id="action-summit" data-action="summit">
+                            <div class="card-icon">🏛️</div>
+                            <div class="card-name">SUMMIT</div>
+                            <div class="card-desc">Global diplomacy — once only.</div>
+                        </div>
+                    </div>
+                    <div class="target-prompt hidden" id="target-prompt">▲ CLICK A NATION TO ACT</div>
+                </div>
+
+            </main>
+
+            <!-- RIGHT COLUMN -->
+            <aside class="col-right">
+                <div class="col-right-label">POWERS</div>
+                <div id="nations-grid" class="nations-stack"></div>
+            </aside>
+
+        </div><!-- /game-grid -->
+
+        <!-- Hidden sub-bar kept for game.js compat -->
+        <div style="display:none" aria-hidden="true">
+            <div id="cascade-strip" class="hidden">
+                <div id="cascade-pills"></div>
+            </div>
+            <div id="world-event-banner" class="hidden">
+                <div id="web-event-name"></div>
+                <div id="web-flavor-text"></div>
+                <div id="web-cascade-rule"></div>
+                <button id="btn-web-event-dismiss">✕</button>
+            </div>
+        </div>
+
+    </div><!-- /screen-game -->
+
+
+    <!-- ======================================================
+         INTRO SCREEN
+    ====================================================== -->
+    <div id="screen-intro" class="screen active">
+        <div class="intro-card glass-panel">
+            <div class="intro-eyebrow">A GEOPOLITICAL NEGOTIATION GAME</div>
+            <h1 class="intro-title">HEGEMON</h1>
+            <div class="intro-rule"></div>
+            <button id="btn-start" class="btn-primary btn-large">ACCEPT BRIEFING</button>
+        </div>
+    </div>
+
+
+    <!-- ======================================================
+         ASSIGNMENT SCREEN — Trading Cards
+    ====================================================== -->
+    <div id="screen-briefing" class="screen">
+        <div class="assignment-layout">
+            <div class="assignment-title">YOUR ASSIGNMENT</div>
+
+            <div class="assignment-player-section">
+                <div class="trading-card player-trading-card" id="player-trading-card">
+                    <div class="tc-top" id="tc-top-player">
+                        <span id="briefing-flag" class="tc-flag">—</span>
+                    </div>
+                    <div class="tc-bottom">
+                        <div class="tc-name" id="briefing-nation-name">—</div>
+                        <div class="tc-region hidden" id="briefing-nation-region">—</div>
+                        <div class="tc-role-pill" id="player-role-pill">LEADER</div>
+                        <div class="tc-stats">
+                            <div class="tc-stat-row">
+                                <span class="tc-stat-label">GDP</span>
+                                <div class="tc-stat-track"><div class="tc-stat-fill" id="tc-gdp-fill" style="width:50%"></div></div>
+                                <span class="tc-stat-num" id="briefing-gdp">—</span>
+                            </div>
+                            <div class="tc-stat-row">
+                                <span class="tc-stat-label">MIL</span>
+                                <div class="tc-stat-track"><div class="tc-stat-fill" id="tc-mil-fill" style="width:50%"></div></div>
+                                <span class="tc-stat-num" id="briefing-mil">—</span>
+                            </div>
+                            <div class="tc-stat-row">
+                                <span class="tc-stat-label">APR</span>
+                                <div class="tc-stat-track"><div class="tc-stat-fill" id="tc-apr-fill" style="width:50%"></div></div>
+                                <span class="tc-stat-num" id="briefing-apr">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="assignment-ai-section">
+                <div class="assignment-ai-label">YOUR OPPONENTS</div>
+                <div id="briefing-adversaries-grid" class="ai-cards-row"></div>
+            </div>
+
+            <!-- Hidden analysis (still driven by game.js) -->
+            <div style="display:none" aria-hidden="true">
+                <div id="briefing-loading"></div>
+                <span id="briefing-text"></span>
+                <span id="briefing-cursor"></span>
+            </div>
+
+            <button id="btn-begin-mission" class="btn-primary btn-large" disabled>BEGIN GAME</button>
+        </div>
+    </div>
+
+
+    <!-- ======================================================
+         END GAME SCREEN
+    ====================================================== -->
+    <div id="screen-endgame" class="screen">
+        <div class="endgame-overlay">
+
+            <div class="endgame-header-strip">
+                <div class="endgame-header-identity">
+                    <div class="endgame-representing">AFTER-ACTION REPORT</div>
+                    <div class="endgame-nation-name" id="endgame-nation">—</div>
+                    <div class="endgame-verdict" id="endgame-verdict">—</div>
+                    <div class="rep-tier-pill" id="endgame-rep-tier">—</div>
+                </div>
+                <div class="endgame-header-score">
+                    <div class="score-hero-label">FINAL SCORE</div>
+                    <div class="score-hero-number">
+                        <span id="score-total" class="score-big">—</span><span class="score-denom">/100</span>
+                    </div>
+                    <div id="high-score-badge" class="high-score-badge hidden">NEW BEST</div>
+                </div>
+            </div>
+
+            <div class="endgame-body">
+
+                <!-- Left: Stats -->
+                <div class="endgame-col">
+                    <div class="endgame-col-label">FINAL INDICATORS</div>
+                    <div class="eg-big-stat">
+                        <div class="eg-big-num" id="score-gdp">—</div>
+                        <div class="eg-big-label">GDP</div>
+                        <div class="eg-bar-track"><div class="eg-bar-fill" id="es-bar-gdp" style="width:0%"></div></div>
+                    </div>
+                    <div class="eg-big-stat">
+                        <div class="eg-big-num" id="score-military">—</div>
+                        <div class="eg-big-label">MILITARY</div>
+                        <div class="eg-bar-track"><div class="eg-bar-fill" id="es-bar-military" style="width:0%"></div></div>
+                    </div>
+                    <div class="eg-big-stat">
+                        <div class="eg-big-num" id="score-approval">—</div>
+                        <div class="eg-big-label">APPROVAL</div>
+                        <div class="eg-bar-track"><div class="eg-bar-fill" id="es-bar-approval" style="width:0%"></div></div>
+                    </div>
+                    <div id="endgame-objective-row" class="endgame-objective-row hidden">
+                        <div class="eo-label">SECRET OBJECTIVE</div>
+                        <div class="eo-name" id="eo-name">—</div>
+                        <div class="eo-result" id="eo-result">—</div>
+                        <div class="eo-bonus" id="eo-bonus">—</div>
+                    </div>
+                    <!-- Placeholder for dynamic objective injection by game.js -->
+                    <div class="score-method" style="display:none"></div>
+                </div>
+
+                <!-- Center: Analysis -->
+                <div class="endgame-col endgame-col-main">
+                    <div class="endgame-col-label">DIPLOMATIC ASSESSMENT</div>
+                    <div class="endgame-detail" id="endgame-detail">—</div>
+                    <div class="analysis-inner">
+                        <div id="analysis-loading" class="analysis-loading">
+                            <div class="trans-dots">
+                                <span class="tdot"></span>
+                                <span class="tdot"></span>
+                                <span class="tdot"></span>
+                                <span class="tdot"></span>
+                                <span class="tdot"></span>
+                            </div>
+                            <div class="analysis-loading-text">COMPILING REPORT...</div>
+                        </div>
+                        <div class="analysis-text-wrap">
+                            <span id="analysis-text" class="analysis-text"></span><span class="tele-cursor" id="analysis-cursor" aria-hidden="true">▋</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Relations -->
+                <div class="endgame-col">
+                    <div class="endgame-col-label">DIPLOMATIC RELATIONS</div>
+                    <div class="rel-map-grid" id="rel-map-grid"></div>
+                </div>
+
+            </div><!-- /endgame-body -->
+
+            <div class="endgame-footer-strip">
+                <div class="eg-highscore-display">BEST <span id="eg-highscore-val">—</span></div>
+                <button id="btn-restart" class="btn-primary btn-large">NEW ASSIGNMENT</button>
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- ======================================================
+         GLOBAL EVENT OVERLAY (kept for fallback compat)
+    ====================================================== -->
+    <div id="event-overlay" class="event-overlay">
+        <div class="event-modal glass-panel">
+            <div class="event-modal-header">
+                <span class="event-breaking">⚡ BREAKING — GLOBAL EVENT</span>
+            </div>
+            <div class="event-headline" id="event-headline">—</div>
+            <div class="event-subheadline" id="event-subheadline">—</div>
+            <div class="event-divider"></div>
+            <div class="event-effects" id="event-effects">—</div>
+            <div class="event-modifier-note hidden" id="event-modifier-note">—</div>
+            <button id="btn-event-dismiss" class="btn-primary">ACKNOWLEDGE &amp; CONTINUE</button>
+        </div>
+    </div>
+
+
+    <!-- ======================================================
+         HISTORY SIDEBAR (hidden, game.js compat only)
+    ====================================================== -->
+    <div id="history-overlay" class="history-overlay" style="display:none">
+        <div class="history-panel">
+            <div class="history-header">
+                <span class="history-title">DIPLOMATIC LOG</span>
+                <button id="history-close" class="history-close-btn">✕</button>
+            </div>
+            <div class="history-content" id="history-content"></div>
+        </div>
+    </div>
+
+
+    <!-- ======================================================
+         INTEL POPUP
+    ====================================================== -->
+    <div id="intel-popup" class="intel-popup hidden">
+        <div class="intel-popup-inner glass-panel">
+            <div class="intel-popup-header">
+                <span class="intel-popup-label">CLASSIFIED INTEL</span>
+                <span class="intel-popup-nation" id="intel-popup-nation">—</span>
+            </div>
+            <div class="intel-popup-body" id="intel-popup-text">—</div>
+            <div class="intel-popup-footer">
+                <div class="intel-popup-timer" id="intel-popup-timer"></div>
+                <button id="intel-popup-close" class="btn-intel-dismiss">DISMISS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden LOG button kept for game.js event listener compat -->
+    <button id="btn-history-toggle" style="display:none" aria-hidden="true"></button>
+
+</div><!-- /app -->
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
