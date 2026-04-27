@@ -1,0 +1,3 @@
+[build]
+  command = "echo \"const CONFIG = { ANTHROPIC_API_KEY: '$ANTHROPIC_API_KEY' };\" > config.js"
+  publish = "."
