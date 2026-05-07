@@ -406,6 +406,34 @@ const WORLD_EVENTS = [
         },
         logMessage: 'Cyber warfare: Alliance relationship gains reduced 30% for 2 rounds.',
     },
+    {
+        id: 'economic-boom',
+        name: 'Economic Boom',
+        flavorText: 'Synchronized global growth lifts all boats. Trade networks flourish and diplomatic goodwill follows the money.',
+        immediateEffect: { gdp: 8, military: 0, approval: 5, allRelations: 5 },
+        cascadeRule: {
+            description: 'Trade GDP \xd71.5',
+            longDesc: 'Trade deals yield 50% more GDP for the next 2 rounds.',
+            type: 'trade_gdp_multiplier',
+            value: 1.5,
+            roundsRemaining: 2,
+        },
+        logMessage: 'Economic boom: GDP+8, Approval+5, Trade GDP boosted \xd71.5 for 2 rounds.',
+    },
+    {
+        id: 'climate-emergency',
+        name: 'Climate Emergency',
+        flavorText: 'Unprecedented environmental collapse forces unprecedented international cooperation. Alliance frameworks gain renewed legitimacy.',
+        immediateEffect: { gdp: -4, military: 0, approval: -2, allRelations: 8 },
+        cascadeRule: {
+            description: 'Alliance REL \xd72',
+            longDesc: 'Alliance proposals yield double relationship gains for the next 2 rounds.',
+            type: 'alliance_rel_multiplier',
+            value: 2,
+            roundsRemaining: 2,
+        },
+        logMessage: 'Climate emergency: Relations+8, Alliance gains doubled for 2 rounds.',
+    },
 ];
 
 // What non-targeted AI nations do to the player automatically each round

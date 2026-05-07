@@ -7,7 +7,10 @@
 const API_KEY = CONFIG.ANTHROPIC_API_KEY;
 const API_URL     = 'https://api.anthropic.com/v1/messages';
 const API_MODEL   = 'claude-sonnet-4-20250514';
-const STORAGE_KEY = 'treaty-or-betrayal-highscore';
+const STORAGE_KEY  = 'treaty-or-betrayal-highscore';
+const PRESTIGE_KEY = 'hegemon-prestige';
+const GAMES_KEY    = 'hegemon-games';
+const ACTION_COSTS = { trade: 1, sanctions: 1, alliance: 2, summit: 0 };
 
 // Card color palette — assigned to player then each AI nation
 const CARD_COLORS = ['#3a86ff', '#ff6b35', '#ff006e', '#06d6a0', '#8338ec', '#ffbe0b'];
@@ -45,6 +48,7 @@ const GameState = {
     objectiveCompleted: false,
     objectiveTracking: { minGdp: 100 },
     intelTokens: 3,
+    influenceTokens: 3,
     // New fields
     reputation: 50,
     summitUsed: false,
@@ -91,7 +95,7 @@ function getRelationCategory(relation) {
 }
 
 function getRelationLabel(relation) {
-    return { allied: 'ALLIED', neutral: 'NEUTRAL', hostile: 'HOSTILE' }[getRelationCategory(relation)];
+    return { allied: 'Allied', neutral: 'Neutral', hostile: 'Hostile' }[getRelationCategory(relation)];
 }
 
 function getRelationColor(relation) {
@@ -195,6 +199,7 @@ function checkSummitUnlock() {
     } else if (GameState.summitUsed) {
         summitCard.classList.add('hidden');
     }
+    repositionHandCards();
 }
 
 // ============================================================
@@ -284,6 +289,7 @@ function initGame() {
     GameState.objectiveCompleted  = false;
     GameState.objectiveTracking   = { minGdp: 100 };
     GameState.intelTokens         = 3;
+    GameState.influenceTokens     = 3;
     GameState.reputation          = 50;
     GameState.summitUsed          = false;
     pendingTargetNationId         = null;
@@ -447,6 +453,9 @@ function startMission() {
     document.getElementById('intel-section')?.classList.remove('hidden');
 
     updateReputationBar();
+    renderInfluenceGems();
+    repositionHandCards();
+    checkPrestigeDisplay();
     updateLastAction('Select an action card, then click a nation to act.');
     startRoundTimer();
 }
@@ -488,6 +497,15 @@ function setBar(id, value) {
     el.style.background = colorForValue(value);
 }
 
+function renderPips(value, maxPips) {
+    const filled = Math.min(Math.round(value / 100 * maxPips), maxPips);
+    let html = '';
+    for (let i = 0; i < maxPips; i++) {
+        html += `<span class="nc-pip ${i < filled ? 'nc-pip-filled' : 'nc-pip-empty'}"></span>`;
+    }
+    return html;
+}
+
 function renderAINations() {
     const grid = document.getElementById('nations-grid');
     if (!grid) return;
@@ -511,12 +529,21 @@ function renderAINations() {
             </div>
             <div class="nc-bottom">
                 <div class="nation-name">${nation.name}</div>
+                <div class="nc-pips-row">
+                    <span class="nc-pip-label">G</span>${renderPips(nation.gdp, 5)}
+                </div>
+                <div class="nc-pips-row">
+                    <span class="nc-pip-label">M</span>${renderPips(nation.military, 5)}
+                </div>
+                <div class="nc-pips-row">
+                    <span class="nc-pip-label">A</span>${renderPips(nation.approval, 5)}
+                </div>
                 <div class="nc-rel-row">
                     <span class="rel-dot rel-dot-${cat}"></span>
                     <span class="nation-rel-num">${rel > 0 ? '+' : ''}${rel}</span>
                 </div>
             </div>
-            <div class="nation-overlay"><span class="overlay-text">▶ ACT</span></div>
+            <div class="nation-overlay"><span class="overlay-text">▶ DROP HERE</span></div>
             <div class="nation-info" style="display:none">
                 <div class="nation-region">${nation.region}</div>
                 <span class="nation-personality-tag personality-${nation.personality}"></span>
@@ -677,25 +704,35 @@ async function callAnthropicForIntel(context) {
             userMsg = `Intel intercept: State your current strategic priority in ONE sentence only. Be specific.`;
     }
 
-    const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type':                              'application/json',
-            'x-api-key':                                 API_KEY,
-            'anthropic-version':                         '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-            model:      API_MODEL,
-            max_tokens: 100,
-            system:     `You are the foreign minister of ${targetNation.name}. You are responding to an intelligence intercept. Be brief and in-character.`,
-            messages:   [{ role: 'user', content: userMsg }],
-        }),
-    });
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 12000);
 
-    if (!res.ok) throw new Error(`Intel API ${res.status}`);
-    const data = await res.json();
-    return (data.content?.[0]?.text ?? '').trim();
+    try {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type':                              'application/json',
+                'x-api-key':                                 API_KEY,
+                'anthropic-version':                         '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+                model:      API_MODEL,
+                max_tokens: 100,
+                system:     `You are the foreign minister of ${targetNation.name}. You are responding to an intelligence intercept. Be brief and in-character.`,
+                messages:   [{ role: 'user', content: userMsg }],
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error(`Intel API ${res.status}`);
+        const data = await res.json();
+        return (data.content?.[0]?.text ?? '').trim();
+    } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+    }
 }
 
 function showIntelPopup(nation, text) {
@@ -812,11 +849,33 @@ function showWorldEventBanner(event, callback) {
     if (flavorEl)  flavorEl.textContent  = event.flavorText;
     if (cascadeEl) cascadeEl.textContent = event.cascadeRule ? event.cascadeRule.longDesc : 'No lasting effect.';
 
-    // Update event pill in masthead
     updateEventTicker(event);
 
-    // Brief pause then callback (replaces 6-second banner)
-    setTimeout(() => { if (typeof callback === 'function') callback(); }, 1200);
+    // Event card flip on the felt table
+    const eventArea = document.getElementById('event-card-area');
+    const flipCard  = document.getElementById('event-flip-card');
+    const nameBack  = document.getElementById('efc-event-name');
+    const descBack  = document.getElementById('efc-event-desc');
+
+    if (eventArea && flipCard) {
+        if (nameBack) nameBack.textContent = event.name;
+        if (descBack) descBack.textContent = event.flavorText;
+        flipCard.classList.remove('flipped');
+        eventArea.classList.add('visible');
+
+        setTimeout(() => {
+            flipCard.classList.add('flipped');
+            setTimeout(() => {
+                eventArea.classList.remove('visible');
+                flipCard.classList.remove('flipped');
+                const discardCount = document.getElementById('discard-count');
+                if (discardCount) discardCount.textContent = GameState.usedEventIds.length;
+                if (typeof callback === 'function') callback();
+            }, 3200);
+        }, 500);
+    } else {
+        setTimeout(() => { if (typeof callback === 'function') callback(); }, 1200);
+    }
 }
 
 function renderCascadePills() {
@@ -973,6 +1032,14 @@ async function resolvePlayerAction(targetNation, actionId) {
     }
 
     pendingTargetNationId = targetNation.id;
+
+    // Deduct influence tokens
+    const tokenCost = ACTION_COSTS[actionId] || 0;
+    if (tokenCost > 0) {
+        GameState.influenceTokens = Math.max(0, GameState.influenceTokens - tokenCost);
+        renderInfluenceGems();
+    }
+
     const action = ACTIONS[actionId];
 
     applyDeltas(action.baseCosts.gdp, action.baseCosts.military, action.baseCosts.approval);
@@ -1041,6 +1108,24 @@ async function resolvePlayerAction(targetNation, actionId) {
     });
     updateStats();
     renderAINations();
+
+    // Visual effects on nation card
+    const tgtIdx = GameState.aiNations.findIndex(n => n.id === targetNation.id);
+    const tgtCard = document.getElementById(`nation-card-${tgtIdx}`);
+    if (tgtCard) {
+        const r   = tgtCard.getBoundingClientRect();
+        const cx  = r.left + r.width  / 2;
+        const cy  = r.top  + r.height / 2;
+        if (actionId === 'sanctions') {
+            tgtCard.classList.add('sanctioned');
+            spawnParticles(cx, cy, '#e63946', 10);
+            setTimeout(() => tgtCard.classList.remove('sanctioned'), 500);
+        } else if (actionId === 'alliance' && finalResult.relationship_change > 0) {
+            tgtCard.classList.add('alliance-glow');
+            spawnParticles(cx, cy, '#f0c040', 14);
+            setTimeout(() => tgtCard.classList.remove('alliance-glow'), 4500);
+        }
+    }
 
     GameState.objectiveTracking.minGdp = Math.min(GameState.objectiveTracking.minGdp, GameState.stats.gdp);
     evaluateObjective();
@@ -1265,6 +1350,8 @@ function advanceRound() {
     tickCascades();
 
     GameState.round++;
+    GameState.influenceTokens = 3;
+    renderInfluenceGems();
     GameState.selectedAction = null;
     GameState.currentEvent   = null;
     document.querySelectorAll('.action-card').forEach(c => c.classList.remove('selected'));
@@ -1387,11 +1474,23 @@ function getReputationTier(rep) {
 // ============================================================
 
 async function renderEndGame() {
-    showScreen('screen-endgame');
-
     const score = calculateScore();
     const { verdict, detail } = getVerdict(score);
     const { isNew, prev }     = checkAndSaveHighScore(score);
+
+    // Save prestige
+    savePrestige(score);
+
+    // Flip player card to reveal score on back face
+    const backScoreEl = document.getElementById('final-score-big');
+    if (backScoreEl) backScoreEl.textContent = score;
+    const cardWrap = document.getElementById('player-card-wrap');
+    if (cardWrap) {
+        cardWrap.classList.add('flipped');
+        await sleep(900);
+    }
+
+    showScreen('screen-endgame');
 
     document.getElementById('endgame-nation').textContent  = GameState.playerCountry.name;
     document.getElementById('endgame-verdict').textContent = verdict;
@@ -1403,9 +1502,9 @@ async function renderEndGame() {
         const tier = getReputationTier(GameState.reputation);
         const tierColors = { Diplomat: '#06d6a0', Hegemon: '#ffbe0b', Warmonger: '#ff3860' };
         tierEl.textContent = `${tier.toUpperCase()} TIER`;
-        tierEl.style.background = tierColors[tier] + '22';
+        tierEl.style.background  = tierColors[tier] + '22';
         tierEl.style.borderColor = tierColors[tier] + '55';
-        tierEl.style.color = tierColors[tier];
+        tierEl.style.color       = tierColors[tier];
     }
 
     const badge = document.getElementById('high-score-badge');
@@ -1417,7 +1516,6 @@ async function renderEndGame() {
         badge.classList.remove('hidden');
     }
 
-    // Footer high score
     const footerHs = document.getElementById('eg-highscore-val');
     if (footerHs) footerHs.textContent = getHighScore();
 
@@ -1426,18 +1524,27 @@ async function renderEndGame() {
     document.getElementById('score-military').textContent  = military;
     document.getElementById('score-approval').textContent  = approval;
 
-    // Objective injection (compat with game.js dynamic approach)
+    // Archetype badge
+    const badgeContainer = document.getElementById('archetype-badge-container');
+    if (badgeContainer) {
+        const { color } = renderArchetypeBadge(badgeContainer);
+        setTimeout(() => {
+            const rect = badgeContainer.getBoundingClientRect();
+            spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, color, 20);
+        }, 300);
+    }
+
+    // Objective injection
     const scoreMethod = document.querySelector('.score-method');
     if (scoreMethod) {
         const existing = scoreMethod.parentNode.querySelector('.objective-result-line');
         if (existing) existing.remove();
-
         if (GameState.objective) {
             const objLine = document.createElement('div');
             objLine.className = 'objective-result-line';
             if (GameState.objectiveCompleted) {
                 objLine.textContent = `OBJECTIVE COMPLETE — ${GameState.objective.name} — +${GameState.objective.bonusScore} pts`;
-                objLine.style.color = '#06d6a0';
+                objLine.style.color = '#2dc653';
             } else {
                 objLine.textContent = `OBJECTIVE INCOMPLETE — ${GameState.objective.name}`;
                 objLine.style.color = 'rgba(255,255,255,0.35)';
@@ -1891,6 +1998,171 @@ function extractJSON(text) {
 }
 
 // ============================================================
+// NEW TABLETOP FUNCTIONS
+// ============================================================
+
+function repositionHandCards() {
+    const container = document.getElementById('actions-grid');
+    if (!container) return;
+    const cards = Array.from(container.querySelectorAll('.hand-card:not(.hidden)'));
+    const n = cards.length;
+    if (!n) return;
+    const maxAngle = n > 1 ? 6 : 0;
+    cards.forEach((card, i) => {
+        const t     = n === 1 ? 0 : i / (n - 1);
+        const angle = -maxAngle + t * maxAngle * 2;
+        const norm  = (t - 0.5) * 2;
+        const raise = norm * norm * 8;
+        card.style.setProperty('--card-rotate', angle.toFixed(1) + 'deg');
+        card.style.setProperty('--card-raise',  raise.toFixed(1) + 'px');
+    });
+}
+
+function renderInfluenceGems() {
+    for (let i = 0; i < 3; i++) {
+        const el = document.getElementById(`gem-${i}`);
+        if (!el) continue;
+        el.classList.toggle('gem-spent', i >= GameState.influenceTokens);
+    }
+    updateHandCardAffordability();
+}
+
+function updateHandCardAffordability() {
+    document.querySelectorAll('.hand-card').forEach(card => {
+        const cost = ACTION_COSTS[card.dataset.action] || 0;
+        card.classList.toggle('insufficient', cost > 0 && GameState.influenceTokens < cost);
+    });
+}
+
+function spawnParticles(x, y, color, count) {
+    const existing = document.querySelectorAll('.particle').length;
+    count = Math.min(count, 30 - existing);
+    for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.style.cssText = `left:${x}px;top:${y}px;background:${color};opacity:1`;
+        document.body.appendChild(p);
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.5 + Math.random() * 3.5;
+        let vx = Math.cos(angle) * speed, vy = Math.sin(angle) * speed - 2;
+        let ox = x, oy = y, alpha = 1;
+        const tick = () => {
+            vy += 0.12; ox += vx; oy += vy; alpha -= 0.022;
+            p.style.left = ox + 'px'; p.style.top = oy + 'px'; p.style.opacity = alpha;
+            if (alpha > 0) requestAnimationFrame(tick); else p.remove();
+        };
+        requestAnimationFrame(tick);
+    }
+}
+
+function getPlaystyleArchetype() {
+    const tally = { trade: 0, sanctions: 0, alliance: 0 };
+    GameState.moveHistory.forEach(m => { if (m.actionId in tally) tally[m.actionId]++; });
+    const total = GameState.moveHistory.length || 1;
+    if (tally.sanctions / total >= 0.5) return 'warmonger';
+    if (tally.alliance  / total >= 0.5) return 'statesman';
+    if (tally.trade     / total >= 0.5) return 'merchant';
+    const { gdp, military, approval } = GameState.stats;
+    if (Math.max(gdp, military, approval) - Math.min(gdp, military, approval) < 25) return 'pragmatist';
+    return 'opportunist';
+}
+
+function renderArchetypeBadge(container) {
+    const archetypes = {
+        warmonger:   { icon: '🛡', name: 'Warmonger',   color: '#e63946', desc: 'You ruled through force and coercion. Nations feared your sanctions but rarely respected your leadership.' },
+        statesman:   { icon: '🕊', name: 'Statesman',   color: '#3a86ff', desc: 'You built alliances and earned goodwill abroad. Your term will be remembered as an era of cooperation.' },
+        merchant:    { icon: '🪙', name: 'Merchant',    color: '#f0c040', desc: 'Trade was your primary tool. You enriched the nation by keeping commerce flowing across borders.' },
+        pragmatist:  { icon: '⚖️', name: 'Pragmatist',  color: '#888888', desc: 'You balanced competing interests with steady judgment. No single doctrine defined your approach.' },
+        opportunist: { icon: '👁', name: 'Opportunist', color: '#7b2d8b', desc: 'You adapted to shifting conditions and exploited openings as they arose. Principle took a back seat to results.' },
+    };
+    const key = getPlaystyleArchetype();
+    const a   = archetypes[key] || archetypes.pragmatist;
+    container.innerHTML = `
+        <div class="archetype-badge" style="--badge-color:${a.color}">
+            <span style="font-size:28px;line-height:1">${a.icon}</span>
+        </div>
+        <div class="archetype-name" style="--badge-color:${a.color}">${a.name}</div>
+        <div class="archetype-desc">${a.desc}</div>
+    `;
+    return { color: a.color };
+}
+
+function savePrestige(score) {
+    const current = parseInt(localStorage.getItem(PRESTIGE_KEY) || '0', 10);
+    const games   = parseInt(localStorage.getItem(GAMES_KEY)    || '0', 10);
+    const earned  = Math.floor(score / 10);
+    localStorage.setItem(PRESTIGE_KEY, String(current + earned));
+    localStorage.setItem(GAMES_KEY,    String(games + 1));
+    return current + earned;
+}
+
+function getPrestigeTier(total) {
+    if (total >= 100) return { name: 'Hegemon',    cssClass: 'tier-hegemon',    shimmer: true };
+    if (total >= 50)  return { name: 'Chancellor', cssClass: 'tier-chancellor', shimmer: false };
+    if (total >= 25)  return { name: 'Minister',   cssClass: 'tier-minister',   shimmer: false };
+    if (total >= 10)  return { name: 'Statesman',  cssClass: 'tier-statesman',  shimmer: false };
+    return                   { name: 'Diplomat',   cssClass: 'tier-diplomat',   shimmer: false };
+}
+
+function checkPrestigeDisplay() {
+    const total = parseInt(localStorage.getItem(PRESTIGE_KEY) || '0', 10);
+    const games = parseInt(localStorage.getItem(GAMES_KEY)    || '0', 10);
+    const el    = document.getElementById('prestige-display');
+    if (!el) return;
+    if (!games) { el.style.display = 'none'; return; }
+    const tier = getPrestigeTier(total);
+    el.innerHTML = `
+        <span class="prestige-tier-badge ${tier.cssClass}">${tier.name}</span>
+        <span class="prestige-points">${total} prestige</span>
+    `;
+    el.style.display = 'flex';
+    // Gold shimmer on player card for top tier
+    document.getElementById('player-card-wrap')?.classList.toggle('prestige-shimmer', tier.shimmer);
+}
+
+async function runEspionageOnCard(nationCardEl, nation) {
+    GameState.influenceTokens = Math.max(0, GameState.influenceTokens - 1);
+    renderInfluenceGems();
+
+    addLog('player', `[ESPIONAGE] Covert intelligence operation on ${nation.name}.`);
+    GameState.moveHistory.push({
+        round:             GameState.round,
+        actionId:          'espionage',
+        actionLabel:       'ESPIONAGE',
+        targetName:        nation.name,
+        targetPersonality: nation.personality,
+        relationChange:    0,
+    });
+
+    const espCard = document.getElementById('action-espionage');
+    if (espCard) {
+        espCard.classList.add('espionage-peek');
+        espCard.addEventListener('animationend', () => espCard.classList.remove('espionage-peek'), { once: true });
+    }
+
+    try {
+        const intelCall    = callAnthropicForIntel({
+            targetNation:  nation,
+            playerCountry: GameState.playerCountry,
+            relations:     { ...GameState.relations },
+            stats:         { ...GameState.stats },
+            revealType:    'hidden_agenda',
+        });
+        const intelTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('intel timeout')), 13000)
+        );
+        const resultText = await Promise.race([intelCall, intelTimeout]);
+        showIntelPopup(nation, resultText);
+    } catch (err) {
+        console.error('[Espionage]', err);
+        showIntelPopup(nation, `[CLASSIFIED] ${nation.hiddenAgenda || 'Signal lost — intelligence intercept failed.'}`);
+    }
+
+    GameState.objectiveTracking.minGdp = Math.min(GameState.objectiveTracking.minGdp, GameState.stats.gdp);
+    evaluateObjective();
+}
+
+// ============================================================
 // EVENT LISTENERS
 // ============================================================
 
@@ -1904,8 +2176,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-restart')
         ?.addEventListener('click', () => {
+            document.getElementById('player-card-wrap')?.classList.remove('flipped');
             document.querySelectorAll('.nation-card').forEach(c => c.remove());
             showScreen('screen-intro');
+            checkPrestigeDisplay();
         });
 
     document.getElementById('dispatch-acknowledge')
@@ -1920,14 +2194,71 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('history-close')
         ?.addEventListener('click', toggleHistorySidebar);
 
-    // Action cards — click to select, hover to pause timer
-    document.querySelectorAll('.action-card').forEach(card => {
+    // Hand cards — click, hover, drag
+    document.querySelectorAll('.hand-card').forEach(card => {
         card.addEventListener('click', () => {
             if (card.dataset.action) handleActionSelect(card.dataset.action);
         });
         card.addEventListener('mouseenter', () => { roundTimerPaused = true; });
         card.addEventListener('mouseleave', () => { roundTimerPaused = false; });
+
+        card.addEventListener('dragstart', e => {
+            const actionId = card.dataset.action;
+            if (GameState.phase !== 'select-action') { e.preventDefault(); return; }
+            const cost = ACTION_COSTS[actionId] || 0;
+            if (cost > 0 && GameState.influenceTokens < cost) { e.preventDefault(); return; }
+            GameState.selectedAction = actionId;
+            document.querySelectorAll('.action-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('dragging', 'selected');
+            renderPhase();
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', actionId);
+        });
+
+        card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            if (GameState.phase === 'select-action') {
+                card.classList.add('snap-back');
+                card.addEventListener('animationend', () => card.classList.remove('snap-back'), { once: true });
+            }
+        });
     });
+
+    // Nation cards as drop targets (event delegation)
+    document.addEventListener('dragover', e => {
+        const nc = e.target.closest('.nation-card');
+        if (nc && GameState.phase === 'select-action' && GameState.selectedAction) {
+            e.preventDefault();
+            document.querySelectorAll('.nation-card').forEach(c => c.classList.remove('drag-over'));
+            nc.classList.add('drag-over');
+        }
+    }, false);
+
+    document.addEventListener('dragleave', e => {
+        const nc = e.target.closest('.nation-card');
+        if (nc) nc.classList.remove('drag-over');
+    }, false);
+
+    document.addEventListener('drop', e => {
+        const nc = e.target.closest('.nation-card');
+        if (!nc || GameState.phase !== 'select-action' || !GameState.selectedAction) return;
+        e.preventDefault();
+        document.querySelectorAll('.nation-card').forEach(c => c.classList.remove('drag-over'));
+        document.querySelectorAll('.hand-card').forEach(c => c.classList.remove('dragging'));
+
+        const idx    = parseInt(nc.dataset.nationIndex, 10);
+        const nation = GameState.aiNations[idx];
+        if (!nation) return;
+
+        const actionId = GameState.selectedAction;
+
+        clearRoundTimer();
+        nc.classList.add('targeted');
+        setTimeout(() => nc.classList.remove('targeted'), 600);
+        GameState.phase = 'resolving';
+        renderPhase();
+        setTimeout(() => resolvePlayerAction(nation, actionId), 350);
+    }, false);
 
     document.getElementById('btn-run-intel')
         ?.addEventListener('click', () => {
@@ -1947,5 +2278,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ?.addEventListener('click', () => {
             document.getElementById('world-event-banner')?.classList.add('hidden');
         });
+
+    // Initialize on load
+    checkPrestigeDisplay();
+    repositionHandCards();
 
 });
